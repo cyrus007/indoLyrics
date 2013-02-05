@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html> <!-- manifest="hl.manifest" -->
+<head>
+  <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <!-- link rel="apple-touch-icon" href="iphone_icon.png"/ -->
+  <!-- link rel="apple-touch-startup-image" href="iphone_startup.png"/ -->
+  <!-- link rel="stylesheet" href="hl.css" type="text/css" media="screen, mobile" title="main" charset="utf-8"/ -->
+
+  <title>Fetch song lyrics from lyricsindia.net</title>
+</head>
+<body onload="setTimeout(function() { window.scrollTo(0,1) }, 100);">
+    <p><label>Song:<input name="title" id="title" size="30"></label> <button id="submit" type="submit"> Fetch </button></p>
+  <hr/>
+  <div id="lyrics-box"></div>
+  <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.5/jquery.min.js"></script>
+  <script src="hitrans.js"></script>
+  <script>
+     var baseurl = "http://192.168.1.150/";
+
+     var showLyrics = function( response ) {
+            if(capture = /sorry,/i.exec(response)) {
+                  output = "<p>Did not find any lyrics matching your request.</p>";
+                  $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html(output); });
+                  return 0;
+            }
+            var song = { };
+            response = response.replace( /##/g, "$" );               //convert double hashes
+            var splice = response.match(/#indian([^#]*)#endindian/);
+            var lyrics = RegExp.$1;
+            song.lyrics = convertHindi( lyrics );
+
+            splice = response.match(/stitle\{([^\}]*)\}%/);
+            song.title = convertHindi(RegExp.$1);
+            splice = response.match(/film\{([^\}]*)\}%/);
+            song.album  = RegExp.$1;
+            splice = response.match(/year\{([^\}]*)\}%/);
+            song.year   = RegExp.$1;
+            splice = response.match(/singer\{([^\}]*)\}%/);
+            song.singer = RegExp.$1;
+            splice = response.match(/music\{([^\}]*)\}%/);
+            song.composer = RegExp.$1;
+            splice = response.match(/lyrics\{([^\}]*)\}%/);
+            song.lyricist = RegExp.$1;
+
+            var output = "";
+            if(!song) {
+                  output = "<p>Did not find any lyrics matching your request.</p>";
+                  $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html(output); });
+                  return 0;
+            } else {
+                  var output = "<table border=\"0\" cellpadding=\"0\" style=\"color:#000;font-size:.8em\"> <tr><td>Song: {title} </td></tr> <tr><td>From: {album} {year} </td></tr> <tr><td>Music Director: {composer} </td></tr> <tr><td>Lyrics: {lyricist}</td></tr> <tr><td>Singers: {singer} </td></tr> </table><p style=\"color:#000;font-size:.8em\"> {lyrics} </p><hr/><div style=\"margin-left:1em\">{links}</div>";
+                  output = output.replace( "{title}", song.title );
+                  output = output.replace( "{album}", song.album );
+                  if(song.year) { output = output.replace( "{year}", ' @ ' + song.year ); }
+                  else { output = output.replace( "{year}", '' ); }
+                  output = output.replace( "{composer}", song.composer );
+                  output = output.replace( "{lyricist}", song.lyricist );
+                  output = output.replace( "{singer}", song.singer );
+                  song.lyrics = song.lyrics.replace( /%/g, "" );                //remove %
+                  song.lyrics = song.lyrics.replace( /[\r\n]+/, "\n" );         //replace multiple newlines with one
+                  song.lyrics = song.lyrics.replace( /\n/g, "\<br /\>" );   //replace newlines with line breaks
+                  output = output.replace( "{lyrics}", song.lyrics );
+                  output = output.replace( "{links}", "<a href='http://giitaayan.com/'>Giitaayan</a>" );
+                  $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html(output); });
+            }
+     }
+
+     var giitResult = function( response ) {
+           response = response.replace( /[\n\r]/g, "" ); // No need for CRLF, just complicates our RegExps
+           response = response.replace( /<[iI][mM][gG][^>]*>/g, "" );
+           response = response.replace( /<[sS][cC][rR][iI][pP][tT][^>]*>[^<]*(<!--[^-]*-->)*[^<]*<\/[sS][cC][rR][iI][pP][tT]>/g, "" );
+           response = response.replace( /<[sS][tT][yY][lL][eE][^>]*>[^<]*(<!--[^-]*-->)*[^<]*<\/[sS][tT][yY][lL][eE]>/g, "" );
+           response = response.replace( /<[fF][oO][rR][mM][^>]*>[^<]*<\/[fF][oO][rR][mM]>/g, "" );
+           if(capture = /Sorry, no/i.exec(response)) { 
+             $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html("Sorry, no results found."); });
+             return 0;
+           }
+           else {
+             splice = response.match( /Total[\s*]<b>(\d+)<\/b>[\s*]songs/ );
+             var maxno = parseInt( RegExp.$1 );                      //splice[0].match(/\d+/);
+             if( isNaN( maxno ) ) { 
+               $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html("Error in processing output from server."); });
+               return 0;
+             }
+             else {
+                    maxno = (maxno > 50 ? 50 : maxno );                    //keep to 1st 50 results
+                    var rows = response.split( "<table" )[2].split( "<tr>" );
+                    var songs = new Array();
+                    for( var i = 2; i < maxno + 2; i++ ) {
+                        row = rows[i];
+                        cells = row.split( "<td>" );
+                        splice = cells[7].match( /">([^<]*[\/]*)<\// );
+                        artist = RegExp.$1;
+                        index = cells[3].indexOf( "</" );
+                        title = cells[3].substring( 0, index-6 );          //remove &nbsp;
+                        title = title.replace( /##/g, "$" );               //convert double hashes
+                        song_url = cells[1].match( /http[a-zA-Z0-9:\/\.]*.isb/ );
+                        songs.push( { 'artist' : artist,
+                                      'title'  : convertHindi( title ),
+                                      'song_url': song_url });
+                    }
+                    var output = "<table id=\"stable\" border=\"0\" cellpadding=\"3\"><tr><td width=99%>Title</td><td style=\"display:none;\">ID</td></tr>";
+                    $.each(songs, function(key, value){ 
+                        output = output + "<tr><td>" + value.title + "</td><td style=\"display:none;\">" + value.song_url + "</td></tr>";
+                    });
+                    output = output + "</table>";
+                    $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html(output); });
+             }
+           }
+           $("tr").click(function(event){
+             var index = $("tr").index(this);
+             url = this.lastChild.innerHTML;
+             splice = url.match(/http:\/\/thaxi\.hsc\.usc\.edu\/rmim\/giitaayan\/(.*)/);
+             url = RegExp.$1;
+             $("#lyrics-box").html('');             //just in case
+             $.ajax({
+                        type     : "GET",
+                        url      : baseurl + "isb/" + url,
+                        dataType : "text",
+                        success  : showLyrics,
+                        error    : function(content, status, xhr) {
+                                    var msg = "Sorry but there was an error.";
+                                    $("#lyrics-box").html(msg + status + " " + xhr.statusText);
+                                   }
+             });
+             url = "";
+           });
+     }
+
+     var handler = function(event){
+         var title = $("#title").val();
+         if(!title) $("#lyrics-box").fadeIn(1500, function(){ $("#lyrics-box").html("Please enter a song title ..."); });
+         else {
+           $.ajax({
+             type     : "GET",
+             url      : baseurl + "giit/search.asp?browse=stitle&s=" + title + "&submit=search",
+             dataType : "html",
+             success  : giitResult,
+             error    : function(content, status, xhr) {
+                          var msg = "Sorry but there was an error.";
+                          $("#lyrics-box").html(msg + content + xhr.status + " " + xhr.statusText);
+                        }
+           });
+
+         }
+//         event.preventDefault();
+     };
+     $(document).ready(function(){
+       $("#submit").click(handler);
+       return false;
+     });
+   </script>
+</body>
+</html>
